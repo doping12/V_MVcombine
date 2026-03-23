@@ -651,13 +651,9 @@ def plan_layout(
 
     if layout == "row":
         cols, rows = n, 1
-    elif layout == "grid2x2":
-        if n != 4:
-            raise ValueError("grid2x2 layout requires 4 videos")
-        cols, rows = 2, 2
-    elif layout == "pyramid5":
+    elif layout == "top2bottom3":
         if n != 5:
-            raise ValueError("pyramid5 layout requires 5 videos")
+            raise ValueError("top2bottom3 layout requires 5 videos")
         rows_spec = [sizes[:2], sizes[2:]]
         row_heights = [max(h for _, h in row) for row in rows_spec]
         row_widths = [sum(w for w, _ in row) for row in rows_spec]
@@ -831,7 +827,7 @@ def parse_args() -> argparse.Namespace:
     pc = sub.add_parser("combine", help="combine aligned videos")
     pc.add_argument("--input-dir", "--in", dest="input_dir", type=Path, required=True)
     pc.add_argument("--output", "--out", dest="output", type=Path, required=True)
-    pc.add_argument("--layout", choices=["row", "grid2x2", "pyramid5", "top1bottom2", "grid", "file"], required=True)
+    pc.add_argument("--layout", choices=["row", "top2bottom3", "top1bottom2", "grid", "file"], required=True)
     pc.add_argument("--grid-size", type=str, help="required for --layout grid. Example: 3x2 or 3*2")
     pc.add_argument("--layout-file", type=Path, help="TSV/CSV file for --layout file (file names only)")
     pc.add_argument("--background-color", "--bg", dest="background_color", type=str, default="black", help="black, #RRGGBB, or 0xRRGGBB")
@@ -840,7 +836,7 @@ def parse_args() -> argparse.Namespace:
     pp = sub.add_parser("process", help="align and combine in one command")
     pp.add_argument("--input-dir", "--in", dest="input_dir", type=Path, required=True)
     pp.add_argument("--output", "--out", dest="output", type=Path, required=True)
-    pp.add_argument("--layout", choices=["row", "grid2x2", "pyramid5", "top1bottom2", "grid", "file"], required=True)
+    pp.add_argument("--layout", choices=["row", "top2bottom3", "top1bottom2", "grid", "file"], required=True)
     pp.add_argument("--grid-size", type=str, help="required for --layout grid. Example: 3x2 or 3*2")
     pp.add_argument("--layout-file", type=Path, help="TSV/CSV file for --layout file (file names only)")
     pp.add_argument("--background-color", "--bg", dest="background_color", type=str, default="black", help="black, #RRGGBB, or 0xRRGGBB")
