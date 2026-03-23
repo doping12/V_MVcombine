@@ -510,11 +510,11 @@ def ffmpeg_align_to_reference(
     run(cmd)
 
 
-def quality_profile(name: str, mode: str, infos: list[VideoInfo]) -> tuple[QualityProfile, int | None]:
-    if mode == "source":
+def quality_profile(quality: str, infos: list[VideoInfo]) -> tuple[QualityProfile, int | None]:
+    if quality == "source":
         max_bitrate = max((i.video_bitrate or 0) for i in infos) or None
         return QualityProfile(crf=17, preset="slow"), max_bitrate
-    if mode == "youtube":
+    if quality == "youtube":
         max_h = max(i.height for i in infos)
         if max_h >= 2160:
             return QualityProfile(crf=16, preset="slow"), None
@@ -530,21 +530,20 @@ def quality_profile(name: str, mode: str, infos: list[VideoInfo]) -> tuple[Quali
         "low": QualityProfile(crf=28, preset="veryfast"),
         "testfast": QualityProfile(crf=34, preset="ultrafast"),
     }
-    return manual[name], None
+    return manual[quality], None
 
 
 def align_videos(
     input_dir: Path,
     output_dir: Path,
     quality: str,
-    quality_mode: str,
-    strict_first: bool = True,
+    strict_first: bool = False,
     reference_video: Path | None = None,
     pad_to_reference: bool = False,
 ) -> tuple[list[Path], bool]:
     paths = discover_videos(input_dir)
     infos = [get_video_info(p) for p in paths]
-    profile, bitrate = quality_profile(quality, quality_mode, infos)
+    profile, bitrate = quality_profile(quality, infos)
 
     audios = [extract_audio_mono_f32(p) for p in paths]
     if reference_video is not None:
@@ -723,7 +722,6 @@ def combine_videos(
     output_path: Path,
     layout: str,
     quality: str,
-    quality_mode: str,
     grid_size: str | None = None,
     background_color: str = "black",
     layout_file: Path | None = None,
@@ -753,7 +751,7 @@ def combine_videos(
         infos = [get_video_info(p) for p in ordered_input_paths]
         positions, canvas_w, canvas_h = plan_layout(layout, infos, grid_size=grid_size)
     bg = normalize_color(background_color)
-    profile, bitrate = quality_profile(quality, quality_mode, infos)
+    profile, bitrate = quality_profile(quality, infos)
     min_duration = min(i.duration for i in infos)
     output_fps = max((i.fps for i in infos), default=30.0)
     if output_fps <= 0:
@@ -813,46 +811,42 @@ def parse_args() -> argparse.Namespace:
 
     def add_quality_args(p: argparse.ArgumentParser) -> None:
         p.add_argument(
+            "-q",
+            "--q",
             "--quality",
-            choices=["high", "medium", "low", "testfast"],
+            dest="quality",
+            choices=["high", "medium", "low", "testfast", "youtube", "source"],
             default="high",
-            help="manual quality preset",
-        )
-        p.add_argument(
-            "--quality-mode",
-            choices=["manual", "youtube", "source"],
-            default="manual",
-            help="manual presets or automatic profile selection",
+            help="quality profile",
         )
 
     pa = sub.add_parser("align", help="align and trim videos")
-    pa.add_argument("--input-dir", type=Path, required=True)
-    pa.add_argument("--output-dir", type=Path, required=True)
-    pa.add_argument("--no-strict-first", action="store_true")
-    pa.add_argument("--reference-video", type=Path, help="align all videos against this file in input-dir")
-    pa.add_argument("--pad-to-reference", action="store_true", help="pad missing ranges to black/silence")
+    pa.add_argument("--input-dir", "--in", dest="input_dir", type=Path, required=True)
+    pa.add_argument("--output-dir", "--out", dest="output_dir", type=Path, required=True)
+    pa.add_argument("--strict-first", action="store_true", help="try strict exact-match search first")
+    pa.add_argument("--reference-video", "--ref", dest="reference_video", type=Path, help="align all videos against this file in input-dir")
+    pa.add_argument("--pad-to-reference", "--pad", dest="pad_to_reference", action="store_true", help="pad missing ranges to black/silence")
     add_quality_args(pa)
 
     pc = sub.add_parser("combine", help="combine aligned videos")
-    pc.add_argument("--input-dir", type=Path, required=True)
-    pc.add_argument("--output", type=Path, required=True)
+    pc.add_argument("--input-dir", "--in", dest="input_dir", type=Path, required=True)
+    pc.add_argument("--output", "--out", dest="output", type=Path, required=True)
     pc.add_argument("--layout", choices=["row", "grid2x2", "pyramid5", "top1bottom2", "grid", "file"], required=True)
     pc.add_argument("--grid-size", type=str, help="required for --layout grid. Example: 3x2 or 3*2")
     pc.add_argument("--layout-file", type=Path, help="TSV/CSV file for --layout file (file names only)")
-    pc.add_argument("--background-color", type=str, default="black", help="black, #RRGGBB, or 0xRRGGBB")
+    pc.add_argument("--background-color", "--bg", dest="background_color", type=str, default="black", help="black, #RRGGBB, or 0xRRGGBB")
     add_quality_args(pc)
 
     pp = sub.add_parser("process", help="align and combine in one command")
-    pp.add_argument("--input-dir", type=Path, required=True)
-    pp.add_argument("--aligned-dir", type=Path, required=True)
-    pp.add_argument("--output", type=Path, required=True)
+    pp.add_argument("--input-dir", "--in", dest="input_dir", type=Path, required=True)
+    pp.add_argument("--output", "--out", dest="output", type=Path, required=True)
     pp.add_argument("--layout", choices=["row", "grid2x2", "pyramid5", "top1bottom2", "grid", "file"], required=True)
     pp.add_argument("--grid-size", type=str, help="required for --layout grid. Example: 3x2 or 3*2")
     pp.add_argument("--layout-file", type=Path, help="TSV/CSV file for --layout file (file names only)")
-    pp.add_argument("--background-color", type=str, default="black", help="black, #RRGGBB, or 0xRRGGBB")
-    pp.add_argument("--no-strict-first", action="store_true")
-    pp.add_argument("--reference-video", type=Path, help="align all videos against this file in input-dir")
-    pp.add_argument("--pad-to-reference", action="store_true", help="pad missing ranges to black/silence")
+    pp.add_argument("--background-color", "--bg", dest="background_color", type=str, default="black", help="black, #RRGGBB, or 0xRRGGBB")
+    pp.add_argument("--strict-first", action="store_true", help="try strict exact-match search first")
+    pp.add_argument("--reference-video", "--ref", dest="reference_video", type=Path, help="align all videos against this file in input-dir")
+    pp.add_argument("--pad-to-reference", "--pad", dest="pad_to_reference", action="store_true", help="pad missing ranges to black/silence")
     add_quality_args(pp)
     return parser.parse_args()
 
@@ -865,8 +859,7 @@ def main() -> None:
                 input_dir=args.input_dir,
                 output_dir=args.output_dir,
                 quality=args.quality,
-                quality_mode=args.quality_mode,
-                strict_first=not args.no_strict_first,
+                strict_first=args.strict_first,
                 reference_video=args.reference_video,
                 pad_to_reference=args.pad_to_reference,
             )
@@ -879,7 +872,6 @@ def main() -> None:
                 output_path=args.output,
                 layout=args.layout,
                 quality=args.quality,
-                quality_mode=args.quality_mode,
                 grid_size=args.grid_size,
                 background_color=args.background_color,
                 layout_file=args.layout_file,
@@ -887,12 +879,12 @@ def main() -> None:
             return
 
         if args.command == "process":
+            aligned_dir = args.output.parent / "aligned"
             aligned_paths, _ = align_videos(
                 input_dir=args.input_dir,
-                output_dir=args.aligned_dir,
+                output_dir=aligned_dir,
                 quality=args.quality,
-                quality_mode=args.quality_mode,
-                strict_first=not args.no_strict_first,
+                strict_first=args.strict_first,
                 reference_video=args.reference_video,
                 pad_to_reference=args.pad_to_reference,
             )
@@ -901,7 +893,6 @@ def main() -> None:
                 output_path=args.output,
                 layout=args.layout,
                 quality=args.quality,
-                quality_mode=args.quality_mode,
                 grid_size=args.grid_size,
                 background_color=args.background_color,
                 layout_file=args.layout_file,

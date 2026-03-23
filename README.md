@@ -2,6 +2,8 @@
 
 音声を使って複数動画の位置を揃え、レイアウト結合するCLIツールです。
 
+趣味 (デレステ) のために開発しましたが、ほとんど保守するつもりはないです
+
 ### セットアップ (uv)
 
 ```bash
@@ -25,61 +27,56 @@ uv run python main.py --help
 ### オプション一覧
 
 共通画質オプション（`align` / `combine` / `process`）:
-- `--quality {high|medium|low|testfast}`: 手動画質プリセット
-- `--quality-mode {manual|youtube|source}`:
-  - `manual`: `--quality`を使用
+- `-q`, `--q`, `--quality {high|medium|low|testfast|youtube|source}`: 画質プリセット
   - `youtube`: 解像度ベースでYouTube向けに自動調整
   - `source`: 入力側ビットレート寄りで保持優先
 
 `align`:
-- `--input-dir <DIR>`: 入力動画ディレクトリ（必須）
-- `--output-dir <DIR>`: 揃え後動画の出力先（必須）
-- `--no-strict-first`: 厳密一致探索をスキップして相関ベース推定を優先
-- `--reference-video <FILE>`: 入力ディレクトリ内の基準動画ファイルを指定
-- `--pad-to-reference`: `--reference-video`と併用。基準動画の長さに揃え、不足区間を黒画面/無音で埋める
+- `--input-dir`, `--in <DIR>`: 入力動画ディレクトリ（必須）
+- `--output-dir`, `--out <DIR>`: 揃え後動画の出力先（必須）
+- `--strict-first`: 厳密一致探索を先に試す（既定は相関ベース）
+- `--reference-video`, `--ref <FILE>`: 入力ディレクトリ内の基準動画ファイルを指定
+- `--pad-to-reference`, `--pad`: `--ref`と併用。基準動画の長さに揃え、不足区間を黒画面/無音で埋める
 
 `combine`:
-- `--input-dir <DIR>`: 結合対象動画ディレクトリ（必須）
-- `--output <FILE>`: 出力動画ファイル（必須）
+- `--input-dir`, `--in <DIR>`: 結合対象動画ディレクトリ（必須）
+- `--output`, `--out <FILE>`: 出力動画ファイル（必須）
 - `--layout {row|grid2x2|pyramid5|top1bottom2|grid|file}`: 配置方式（必須）
 - `--grid-size <XxY または X*Y>`: `--layout grid`時に必須
 - `--layout-file <FILE>`: `--layout file`時のTSV/CSV配置ファイル（省略時はファイル名順）
-- `--background-color <black|#RRGGBB|0xRRGGBB>`: 空きスペース背景色（既定: `black`）
+- `--background-color`, `--bg <black|#RRGGBB|0xRRGGBB>`: 空きスペース背景色（既定: `black`）
 
 `process`:
-- `--input-dir <DIR>`: 入力動画ディレクトリ（必須）
-- `--aligned-dir <DIR>`: 中間（位置揃え後）動画の出力先（必須）
-- `--output <FILE>`: 最終結合動画ファイル（必須）
+- `--input-dir`, `--in <DIR>`: 入力動画ディレクトリ（必須）
+- `--output`, `--out <FILE>`: 最終結合動画ファイル（必須）
 - `--layout {row|grid2x2|pyramid5|top1bottom2|grid|file}`: 配置方式（必須）
 - `--grid-size <XxY または X*Y>`: `--layout grid`時に必須
 - `--layout-file <FILE>`: `--layout file`時のTSV/CSV配置ファイル（省略時はファイル名順）
-- `--background-color <black|#RRGGBB|0xRRGGBB>`: 空きスペース背景色（既定: `black`）
-- `--no-strict-first`: 厳密一致探索をスキップして相関ベース推定を優先
-- `--reference-video <FILE>`: 入力ディレクトリ内の基準動画ファイルを指定
-- `--pad-to-reference`: `--reference-video`と併用。基準動画の長さに揃え、不足区間を黒画面/無音で埋める
+- `--background-color`, `--bg <black|#RRGGBB|0xRRGGBB>`: 空きスペース背景色（既定: `black`）
+- `--strict-first`: 厳密一致探索を先に試す（既定は相関ベース）
+- `--reference-video`, `--ref <FILE>`: 入力ディレクトリ内の基準動画ファイルを指定
+- `--pad-to-reference`, `--pad`: `--ref`と併用。基準動画の長さに揃え、不足区間を黒画面/無音で埋める
+- `process`実行時の中間動画は、`--out`の親ディレクトリ配下に`aligned/`として自動作成
 
 ### 3本を左から並べる (YouTube向け品質)
 
 ```bash
 uv run python main.py process \
-  --input-dir testdata \
-  --aligned-dir output/aligned \
-  --output output/final_row3_youtube.mp4 \
+  --in testdata \
+  --out output/final_row3_youtube.mp4 \
   --layout row \
-  --quality high \
-  --quality-mode youtube
+  --q youtube
 ```
 
 ### align の使用例（位置揃えのみ）
 
 ```bash
 uv run python main.py align \
-  --input-dir testdata \
-  --output-dir output/aligned_only \
-  --quality high \
-  --quality-mode youtube \
-  --reference-video "testdata/ScreenRecording_03-23-2026 23-50-43_1.mov" \
-  --pad-to-reference
+  --in testdata \
+  --out output/aligned_only \
+  --q youtube \
+  --ref "testdata/ScreenRecording_03-23-2026 23-50-43_1.mov" \
+  --pad
 ```
 
 このコマンドは「位置揃え + トリミング（または黒/無音パディング）」まで行い、結合はしません。
@@ -88,13 +85,12 @@ uv run python main.py align \
 
 ```bash
 uv run python main.py combine \
-  --input-dir output/aligned_only \
-  --output output/final_from_aligned.mp4 \
+  --in output/aligned_only \
+  --out output/final_from_aligned.mp4 \
   --layout grid \
   --grid-size 3x2 \
-  --background-color "#112233" \
-  --quality high \
-  --quality-mode youtube
+  --bg "#112233" \
+  --q youtube
 ```
 
 このコマンドは既に揃え済みの動画を結合します（音声アライン処理はしません）。
@@ -103,30 +99,26 @@ uv run python main.py combine \
 
 ```bash
 uv run python main.py process \
-  --input-dir testdata \
-  --aligned-dir output/aligned_ref \
-  --output output/final_row3_refpad_youtube.mp4 \
+  --in testdata \
+  --out output/final_row3_refpad_youtube.mp4 \
   --layout row \
-  --quality high \
-  --quality-mode youtube \
-  --reference-video "testdata/ScreenRecording_03-23-2026 23-50-43_1.mov" \
-  --pad-to-reference
+  --q youtube \
+  --ref "testdata/ScreenRecording_03-23-2026 23-50-43_1.mov" \
+  --pad
 ```
 
 ### X*Y グリッドで並べる（空きマスは指定色）
 
 ```bash
 uv run python main.py process \
-  --input-dir testdata \
-  --aligned-dir output/aligned_grid \
-  --output output/final_grid_3x2_color.mp4 \
+  --in testdata \
+  --out output/final_grid_3x2_color.mp4 \
   --layout grid \
   --grid-size 3x2 \
-  --background-color "#112233" \
-  --quality high \
-  --quality-mode youtube \
-  --reference-video "testdata/ScreenRecording_03-23-2026 23-50-43_1.mov" \
-  --pad-to-reference
+  --bg "#112233" \
+  --q youtube \
+  --ref "testdata/ScreenRecording_03-23-2026 23-50-43_1.mov" \
+  --pad
 ```
 
 `--grid-size` は `3x2` と `3*2` のどちらでも指定できます。  
@@ -153,13 +145,12 @@ movie_c.mp4,movie_a.mov,
 実行例:
 ```bash
 uv run python main.py combine \
-  --input-dir output/aligned_only \
-  --output output/final_layout_file.mp4 \
+  --in output/aligned_only \
+  --out output/final_layout_file.mp4 \
   --layout file \
   --layout-file testdata/layout_example.tsv \
-  --background-color "#223344" \
-  --quality high \
-  --quality-mode youtube
+  --bg "#223344" \
+  --q youtube
 ```
 
 `--layout-file`を省略した場合は、ファイル名順で横一列に並べます。
@@ -175,6 +166,6 @@ uv run python main.py combine \
 
 ### サブコマンド差分メモ
 
-- `align`で使える: `--output-dir`, `--no-strict-first`, `--reference-video`, `--pad-to-reference`
-- `combine`で使える: `--output`, `--layout`, `--grid-size`, `--layout-file`, `--background-color`
-- `process`で使える: `--aligned-dir` + `align`系 + `combine`系（`--layout-file`含む、一括実行）
+- `align`で使える: `--out`, `--strict-first`, `--ref`, `--pad`
+- `combine`で使える: `--out`, `--layout`, `--grid-size`, `--layout-file`, `--bg`
+- `process`で使える: `align`系 + `combine`系（`--layout-file`含む。一括実行で`aligned/`は自動生成）
