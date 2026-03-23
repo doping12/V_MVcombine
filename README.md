@@ -162,7 +162,7 @@ uv run python main.py combine \
 - `top3bottom2` (上3/下2の5本)
 - `top1bottom2` (上1/下2の3本)
 - `top2bottom1` (上2/下1の3本)
-- `grid` (任意のX*Y。例: 2x2は旧grid2x2相当。空きマスは背景色で埋める)
+- `grid` (任意のX*Y。例: 2x2 空きマスは背景色で埋める)
 - `file` (TSV/CSVで行列配置。未記載ファイルはファイル名順で末尾に追加)
 
 ### サブコマンド差分メモ
