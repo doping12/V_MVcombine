@@ -3,4 +3,6 @@ output/
 testdata/
 runs/
 AGENTS.md
+.DS_Store
+
 
