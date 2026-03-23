@@ -41,7 +41,7 @@ uv run python main.py --help
 `combine`:
 - `--input-dir`, `--in <DIR>`: 結合対象動画ディレクトリ（必須）
 - `--output`, `--out <FILE>`: 出力動画ファイル（必須）
-- `--layout {row|top2bottom3|top1bottom2|grid|file}`: 配置方式（必須）
+- `--layout {row|top2bottom3|top3bottom2|top1bottom2|top2bottom1|grid|file}`: 配置方式（必須）
 - `--grid-size <XxY または X*Y>`: `--layout grid`時に必須
 - `--layout-file <FILE>`: `--layout file`時のTSV/CSV配置ファイル（省略時はファイル名順）
 - `--background-color`, `--bg <black|#RRGGBB|0xRRGGBB>`: 空きスペース背景色（既定: `black`）
@@ -49,7 +49,7 @@ uv run python main.py --help
 `process`:
 - `--input-dir`, `--in <DIR>`: 入力動画ディレクトリ（必須）
 - `--output`, `--out <FILE>`: 最終結合動画ファイル（必須）
-- `--layout {row|top2bottom3|top1bottom2|grid|file}`: 配置方式（必須）
+- `--layout {row|top2bottom3|top3bottom2|top1bottom2|top2bottom1|grid|file}`: 配置方式（必須）
 - `--grid-size <XxY または X*Y>`: `--layout grid`時に必須
 - `--layout-file <FILE>`: `--layout file`時のTSV/CSV配置ファイル（省略時はファイル名順）
 - `--background-color`, `--bg <black|#RRGGBB|0xRRGGBB>`: 空きスペース背景色（既定: `black`）
@@ -159,7 +159,9 @@ uv run python main.py combine \
 
 - `row` (X=動画数, Y=1 の横並び)
 - `top2bottom3` (上2/下3の5本)
+- `top3bottom2` (上3/下2の5本)
 - `top1bottom2` (上1/下2の3本)
+- `top2bottom1` (上2/下1の3本)
 - `grid` (任意のX*Y。例: 2x2は旧grid2x2相当。空きマスは背景色で埋める)
 - `file` (TSV/CSVで行列配置。未記載ファイルはファイル名順で末尾に追加)
 
