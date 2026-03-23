@@ -1,0 +1,9 @@
+[project]
+name = "v-mvcombine"
+version = "0.1.0"
+description = "Video audio-alignment and multi-layout combiner"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "numpy>=2.2.0",
+]

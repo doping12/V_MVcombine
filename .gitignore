@@ -1,0 +1,6 @@
+.venv/
+output/
+testdata/
+runs/
+AGENTS.md
+
