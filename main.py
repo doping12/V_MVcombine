@@ -6,6 +6,7 @@ import json
 import re
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -85,10 +86,23 @@ def get_video_info(path: Path) -> VideoInfo:
         fps = float(num) / float(den) if float(den) != 0 else 0.0
     except Exception:
         fps = 0.0
+    width = int(video_stream["width"])
+    height = int(video_stream["height"])
+    rotation = 0
+    for sd in video_stream.get("side_data_list", []):
+        if "rotation" in sd:
+            try:
+                rotation = int(sd["rotation"])
+            except Exception:
+                rotation = 0
+            break
+    if rotation % 180 != 0:
+        width, height = height, width
+
     return VideoInfo(
         path=path,
-        width=int(video_stream["width"]),
-        height=int(video_stream["height"]),
+        width=width,
+        height=height,
         duration=float(duration),
         fps=fps,
         video_bitrate=int(bitrate) if bitrate else None,
@@ -166,6 +180,164 @@ def load_layout_tsv(
     total_cells = max(cell_indices) + 1
     rows_out = (total_cells + max_cols - 1) // max_cols
     return ordered_paths, max_cols, rows_out, cell_indices
+
+
+def extract_audio_envelope(path: Path, frame_size: int = 640, hop_size: int = 320) -> np.ndarray:
+    audio = extract_audio_mono_f32(path)
+    env = energy_envelope(audio, frame_size=frame_size, hop_size=hop_size)
+    return env.astype(np.float64)
+
+
+def ncc_scores_valid(signal: np.ndarray, pattern: np.ndarray) -> np.ndarray:
+    n = signal.size
+    m = pattern.size
+    if m < 4 or n < m:
+        return np.array([], dtype=np.float64)
+
+    p = pattern - np.mean(pattern)
+    p_norm = float(np.linalg.norm(p))
+    if p_norm <= 1e-9:
+        return np.array([], dtype=np.float64)
+
+    conv = np.correlate(signal, p, mode="valid")
+    csum = np.cumsum(np.insert(signal, 0, 0.0))
+    csum2 = np.cumsum(np.insert(signal * signal, 0, 0.0))
+    win_sum = csum[m:] - csum[:-m]
+    win_sum2 = csum2[m:] - csum2[:-m]
+    mu = win_sum / m
+    var = np.maximum(win_sum2 / m - mu * mu, 1e-12)
+    std = np.sqrt(var)
+    denom = std * p_norm
+    score = conv / (denom + 1e-12)
+    return score
+
+
+def local_peaks(scores: np.ndarray, min_distance: int) -> list[int]:
+    if scores.size == 0:
+        return []
+    peaks: list[int] = []
+    if scores.size == 1:
+        peaks = [0]
+    else:
+        if scores[0] >= scores[1]:
+            peaks.append(0)
+    for i in range(1, scores.size - 1):
+        if scores[i] >= scores[i - 1] and scores[i] >= scores[i + 1]:
+            peaks.append(i)
+    if scores.size >= 2 and scores[-1] >= scores[-2]:
+        peaks.append(scores.size - 1)
+    if not peaks:
+        peaks = [int(np.argmax(scores))]
+
+    peaks = sorted(peaks, key=lambda idx: float(scores[idx]), reverse=True)
+    keep: list[int] = []
+    for idx in peaks:
+        if all(abs(idx - k) >= min_distance for k in keep):
+            keep.append(idx)
+    return sorted(keep)
+
+
+def select_peaks_forward(peaks: list[int], scores: np.ndarray, max_count: int) -> list[int]:
+    if not peaks:
+        return []
+    max_score = max(float(scores[p]) for p in peaks)
+    strong = [p for p in peaks if float(scores[p]) >= max_score * 0.85]
+    cand = strong if len(strong) >= max_count else sorted(peaks, key=lambda p: float(scores[p]), reverse=True)[:max_count]
+    return sorted(cand)[:max_count]
+
+
+def select_peaks_bidirectional(peaks: list[int], scores: np.ndarray, max_count: int) -> list[int]:
+    if not peaks:
+        return []
+    max_score = max(float(scores[p]) for p in peaks)
+    strong = [p for p in peaks if float(scores[p]) >= max_score * 0.85]
+    valid = sorted(strong if strong else peaks)
+    valid.sort()
+    if not valid:
+        return []
+    left = 0
+    right = len(valid) - 1
+    out: list[int] = []
+    while left <= right and len(out) < max_count:
+        out.append(valid[left])
+        left += 1
+        if left <= right and len(out) < max_count:
+            out.append(valid[right])
+            right -= 1
+    return sorted(out)
+
+
+def ffmpeg_cut_segment(
+    src: Path,
+    dst: Path,
+    start_sec: float,
+    duration_sec: float,
+    profile: QualityProfile,
+    bitrate: int | None,
+) -> None:
+    ffmpeg_trim(src, dst, start_sec, duration_sec, profile, bitrate)
+
+
+def multi_cut_from_reference(
+    input_video: Path,
+    reference_video: Path,
+    output_dir: Path,
+    quality: str,
+    search_mode: str,
+    max_clips: int,
+    ref_duration_sec: float | None = None,
+) -> tuple[list[Path], float]:
+    info = get_video_info(input_video)
+    profile, bitrate = quality_profile(quality, [info])
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    t0 = time.perf_counter()
+    target_env = extract_audio_envelope(input_video)
+    ref_env_full = extract_audio_envelope(reference_video)
+
+    hop_size = 320
+    if ref_duration_sec is not None:
+        keep = max(4, int(round(ref_duration_sec * AUDIO_SR / hop_size)))
+        ref_env = ref_env_full[:keep]
+        clip_duration = ref_duration_sec
+    else:
+        ref_env = ref_env_full
+        clip_duration = get_video_info(reference_video).duration
+
+    scores = ncc_scores_valid(target_env, ref_env)
+    min_dist = max(1, int(ref_env.size * 0.8))
+    peaks = local_peaks(scores, min_distance=min_dist)
+    if search_mode == "forward":
+        selected = select_peaks_forward(peaks, scores, max_count=max_clips)
+    elif search_mode == "bidirectional":
+        selected = select_peaks_bidirectional(peaks, scores, max_count=max_clips)
+    else:
+        raise ValueError(f"unsupported search mode: {search_mode}")
+
+    out_paths: list[Path] = []
+    for i, idx in enumerate(selected, start=1):
+        start_sec = (idx * hop_size) / AUDIO_SR
+        if start_sec + clip_duration > info.duration:
+            continue
+        dst = output_dir / f"segment_{i:02d}.mp4"
+        ffmpeg_cut_segment(
+            src=input_video,
+            dst=dst,
+            start_sec=start_sec,
+            duration_sec=clip_duration,
+            profile=profile,
+            bitrate=bitrate,
+        )
+        out_paths.append(dst)
+
+    elapsed = time.perf_counter() - t0
+    print(
+        f"[multi-cut] mode={search_mode} input={input_video.name} "
+        f"ref={reference_video.name} clips={len(out_paths)} elapsed_sec={elapsed:.3f}"
+    )
+    for i, p in enumerate(out_paths, start=1):
+        print(f"[multi-cut] out_{i:02d}={p.name}")
+    return out_paths, elapsed
 
 
 def extract_audio_mono_f32(path: Path) -> np.ndarray:
@@ -650,7 +822,14 @@ def plan_layout(
     n = len(sizes)
 
     if layout == "row":
-        cols, rows = n, 1
+        canvas_w = sum(w for w, _ in sizes)
+        canvas_h = max(h for _, h in sizes)
+        positions: list[tuple[int, int]] = []
+        x = 0
+        for w, _h in sizes:
+            positions.append((x, 0))
+            x += w
+        return positions, canvas_w, canvas_h
     elif layout == "top2bottom3":
         if n != 5:
             raise ValueError("top2bottom3 layout requires 5 videos")
@@ -880,6 +1059,15 @@ def parse_args() -> argparse.Namespace:
     pp.add_argument("--reference-video", "--ref", dest="reference_video", type=Path, help="align all videos against this file in input-dir")
     pp.add_argument("--pad-to-reference", "--pad", dest="pad_to_reference", action="store_true", help="pad missing ranges to black/silence")
     add_quality_args(pp)
+
+    pm = sub.add_parser("multi-cut", help="cut multiple matching segments from one long video")
+    pm.add_argument("--input-video", "--in", dest="input_video", type=Path, required=True)
+    pm.add_argument("--reference-video", "--ref", dest="reference_video", type=Path, required=True)
+    pm.add_argument("--output-dir", "--out", dest="output_dir", type=Path, required=True)
+    pm.add_argument("--search-mode", choices=["forward", "bidirectional"], default="forward")
+    pm.add_argument("--max-clips", type=int, default=4)
+    pm.add_argument("--ref-duration-sec", type=float, default=None, help="optional reference window seconds")
+    add_quality_args(pm)
     return parser.parse_args()
 
 
@@ -928,6 +1116,18 @@ def main() -> None:
                 grid_size=args.grid_size,
                 background_color=args.background_color,
                 layout_file=args.layout_file,
+            )
+            return
+
+        if args.command == "multi-cut":
+            multi_cut_from_reference(
+                input_video=args.input_video,
+                reference_video=args.reference_video,
+                output_dir=args.output_dir,
+                quality=args.quality,
+                search_mode=args.search_mode,
+                max_clips=args.max_clips,
+                ref_duration_sec=args.ref_duration_sec,
             )
             return
     except subprocess.CalledProcessError as e:

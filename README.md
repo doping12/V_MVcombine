@@ -23,6 +23,7 @@ uv run python main.py --help
 - `align`: 音声位置合わせ + 前後トリム
 - `combine`: 既に揃えた動画をレイアウト結合
 - `process`: `align` + `combine`を一括実行
+- `multi-cut`: 基準動画の音声パターンで長尺動画から複数区間を切り出し
 
 ### オプション一覧
 
@@ -57,6 +58,14 @@ uv run python main.py --help
 - `--reference-video`, `--ref <FILE>`: 入力ディレクトリ内の基準動画ファイルを指定
 - `--pad-to-reference`, `--pad`: `--ref`と併用。基準動画の長さに揃え、不足区間を黒画面/無音で埋める
 - `process`実行時の中間動画は、`--out`の親ディレクトリ配下に`aligned/`として自動作成
+
+`multi-cut`:
+- `--input-video`, `--in <FILE>`: 長尺動画（必須）
+- `--reference-video`, `--ref <FILE>`: 基準動画（必須）
+- `--output-dir`, `--out <DIR>`: 切り出し出力先（必須）
+- `--search-mode {forward|bidirectional}`: 単方向/双方向探索（既定: `forward`）
+- `--max-clips <N>`: 最大切り出し本数（既定: `4`）
+- `--ref-duration-sec <SEC>`: 基準動画の先頭から使う長さ（秒）。ループ素材向け
 
 ### 3本を左から並べる (YouTube向け品質)
 
@@ -154,6 +163,83 @@ uv run python main.py combine \
 ```
 
 `--layout-file`を省略した場合は、ファイル名順で横一列に並べます。
+
+### 長尺動画から複数区間を切り出す（単方向/双方向）
+
+単方向:
+```bash
+uv run python main.py multi-cut \
+  --in output/longtest/long_alt_abab.mp4 \
+  --ref testdata/ScreenRecording_03-23-2026\ 23-50-43_1.mov \
+  --out output/longtest/cuts_forward \
+  --search-mode forward \
+  --max-clips 4 \
+  --ref-duration-sec 2 \
+  --q testfast
+```
+
+双方向:
+```bash
+uv run python main.py multi-cut \
+  --in output/longtest/long_alt_abab.mp4 \
+  --ref testdata/ScreenRecording_03-23-2026\ 23-50-43_1.mov \
+  --out output/longtest/cuts_bidir \
+  --search-mode bidirectional \
+  --max-clips 4 \
+  --ref-duration-sec 2 \
+  --q testfast
+```
+
+実行ログの`elapsed_sec`は「探索開始から切り出し完了まで」の計測時間です。
+
+### 分割だけ行う（multi-cut）
+
+基準動画の音声パターンを使って、長尺動画から複数区間を切り出します。
+
+単方向探索（forward）:
+```bash
+uv run python main.py multi-cut \
+  --in output/logtest/long_full_52_then_51.mp4 \
+  --ref testdata/ScreenRecording_03-23-2026\ 23-50-43_1.mov \
+  --out output/logtest/cuts_forward_full \
+  --search-mode forward \
+  --max-clips 2 \
+  --q testfast
+```
+
+双方向探索（bidirectional）:
+```bash
+uv run python main.py multi-cut \
+  --in output/logtest/long_full_52_then_51.mp4 \
+  --ref testdata/ScreenRecording_03-23-2026\ 23-50-43_1.mov \
+  --out output/logtest/cuts_bidir_full \
+  --search-mode bidirectional \
+  --max-clips 2 \
+  --q testfast
+```
+
+出力は`segment_01.mp4`, `segment_02.mp4`...の形式で保存されます。
+
+### 分割してから結合する
+
+1. 先に`multi-cut`で切り出し（例: `cuts_forward_full`）
+2. `ref + cut1 + cut2`の3本を`row`結合
+
+```bash
+mkdir -p output/logtest/row_forward_input
+cp -f testdata/ScreenRecording_03-23-2026\ 23-50-43_1.mov output/logtest/row_forward_input/00_ref.mov
+cp -f output/logtest/cuts_forward_full/segment_01.mp4 output/logtest/row_forward_input/01_cut.mp4
+cp -f output/logtest/cuts_forward_full/segment_02.mp4 output/logtest/row_forward_input/02_cut.mp4
+
+uv run python main.py combine \
+  --in output/logtest/row_forward_input \
+  --out output/logtest/row_forward_ref_plus2_fixed.mp4 \
+  --layout row \
+  --q testfast
+```
+
+※ `row`は隙間なしで横に連結されます。  
+※ `ref.mov`の回転メタデータも考慮して配置されます。
 
 ### レイアウト
 
