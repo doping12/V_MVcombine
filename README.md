@@ -238,9 +238,6 @@ uv run python main.py combine \
   --q testfast
 ```
 
-※ `row`は隙間なしで横に連結されます。  
-※ `ref.mov`の回転メタデータも考慮して配置されます。
-
 ### レイアウト
 
 - `row` (X=動画数, Y=1 の横並び)
